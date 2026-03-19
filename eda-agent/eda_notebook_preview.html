@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EDA Notebook Preview</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #010409; padding: 24px; font-family: 'Courier New', monospace; }
+.nb-wrap { background: #0d1117; border-radius: 8px; overflow: hidden; max-width: 920px; margin: 0 auto; }
+.nb-bar { background: #161b22; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #21262d; flex-wrap: wrap; }
+.nb-dots { display: flex; gap: 6px; }
+.nb-dot { width: 10px; height: 10px; border-radius: 50%; }
+.nb-fname { color: #8b949e; font-size: 11px; font-family: sans-serif; }
+.nb-meta { color: #484f58; font-size: 10px; font-family: sans-serif; margin-left: auto; }
+.domain-switch { display: flex; gap: 6px; margin-left: 12px; }
+.ds-btn { padding: 4px 14px; border: 1px solid #30363d; background: transparent; color: #8b949e; font-size: 11px; font-family: sans-serif; cursor: pointer; border-radius: 4px; transition: all .15s; }
+.ds-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.ds-btn:hover:not(.active) { border-color: #58a6ff; color: #58a6ff; }
+.cell { display: flex; border-bottom: 1px solid #21262d; }
+.gutter { width: 44px; min-width: 44px; background: #0d1117; display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+.cn { color: #484f58; font-size: 10px; }
+.cr { color: #3fb950; font-size: 9px; }
+.cbody { flex: 1; padding: 8px 12px; min-width: 0; overflow: hidden; }
+.md-cell .cbody { background: #0d1117; }
+.code-cell .cbody { background: #161b22; }
+.out-cell .cbody { background: #0d1117; border-left: 2px solid #1f6feb; }
+.ct { color: #e6edf3; font-size: 11px; line-height: 1.55; white-space: pre; font-family: 'Courier New', monospace; overflow-x: auto; }
+.kw { color: #ff7b72; } .st { color: #a5d6ff; } .fn { color: #d2a8ff; } .cm { color: #8b949e; } .nu { color: #79c0ff; }
+.h1t { color: #e6edf3; font-size: 17px; font-weight: 700; font-family: sans-serif; border-bottom: 1px solid #21262d; padding-bottom: 5px; margin-bottom: 4px; }
+.h2t { color: #58a6ff; font-size: 13px; font-weight: 600; font-family: sans-serif; margin: 6px 0 3px; }
+.mdt { color: #8b949e; font-size: 11px; font-family: sans-serif; line-height: 1.55; }
+.mdt b { color: #e6edf3; }
+.mdt .r { color: #f78166; font-weight: 600; }
+.badge { display:inline-block;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600; }
+.badge-b { background:rgba(88,166,255,.15);color:#58a6ff;border:1px solid rgba(88,166,255,.3); }
+.badge-r { background:rgba(247,129,102,.15);color:#f78166;border:1px solid rgba(247,129,102,.3); }
+.badge-g { background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.3); }
+.mrow { display:flex;gap:6px;margin:5px 0; }
+.mc { flex:1;background:#161b22;border:1px solid #21262d;border-radius:5px;padding:7px 9px; }
+.ml { color:#8b949e;font-size:9px;font-family:sans-serif;text-transform:uppercase;letter-spacing:.06em; }
+.mv { font-size:18px;font-weight:600;font-family:sans-serif; }
+.ms { font-size:9px;font-family:sans-serif;margin-top:1px; }
+.cgrid { display:grid;grid-template-columns:1fr 1fr;gap:7px; }
+.cbox { background:#161b22;padding:8px; }
+.clbl { color:#8b949e;font-size:9px;font-family:sans-serif;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px; }
+.ins { display:flex;gap:7px;padding:5px 7px;margin:2px 0;border-radius:3px;font-family:sans-serif;font-size:10px;align-items:flex-start; }
+.ins.h { background:rgba(247,129,102,.08);border-left:2px solid #f78166; }
+.ins.m { background:rgba(210,153,34,.08);border-left:2px solid #d29922; }
+.ins.l { background:rgba(63,185,80,.08);border-left:2px solid #3fb950; }
+.isv { font-size:8px;font-weight:700;min-width:34px;padding-top:1px;text-transform:uppercase; }
+.ins.h .isv { color:#f78166; } .ins.m .isv { color:#d29922; } .ins.l .isv { color:#3fb950; }
+.itx { color:#8b949e;line-height:1.45;font-size:10px; } .itx b { color:#e6edf3; }
+.lt { width:100%;border-collapse:collapse;font-size:10px;font-family:sans-serif; }
+.lt th { color:#8b949e;font-weight:500;text-align:left;padding:4px 7px;border-bottom:1px solid #21262d;font-size:9px; }
+.lt td { padding:4px 7px;border-bottom:1px solid #161b22;color:#8b949e; }
+.lt td:first-child { color:#e6edf3; }
+.lbg { height:5px;background:#21262d;border-radius:2px;width:70px;display:inline-block;vertical-align:middle; }
+.lbf { height:5px;border-radius:2px;display:inline-block; }
+</style>
+</head>
+<body>
+<div class="nb-wrap">
+  <div class="nb-bar">
+    <div class="nb-dots">
+      <div class="nb-dot" style="background:#ff5f57"></div>
+      <div class="nb-dot" style="background:#febc2e"></div>
+      <div class="nb-dot" style="background:#28c840"></div>
+    </div>
+    <span class="nb-fname" id="nb-title">tennis_eda_report.ipynb</span>
+    <div class="domain-switch">
+      <button class="ds-btn active" onclick="switchDomain('tennis')">Tennis</button>
+      <button class="ds-btn" onclick="switchDomain('fraud')">Fraud</button>
+      <button class="ds-btn" onclick="switchDomain('sales')">Sales</button>
+    </div>
+    <span class="nb-meta">Vertex AI · Gemini 2.0 Flash · Python 3.11</span>
+  </div>
+
+  <div class="cell md-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="h1t" id="nb-h1">Tennis Match Statistics — EDA Report</div>
+      <div class="mdt" style="font-style:italic;margin-top:3px">Auto-generated by EDAAgent — Vertex AI / Gemini 2.0 Flash</div>
+    </div>
+  </div>
+
+  <div class="cell code-cell">
+    <div class="gutter"><div class="cn">[1]</div><div class="cr">▶</div></div>
+    <div class="cbody">
+      <div class="ct"><span class="kw">import</span> pandas <span class="kw">as</span> pd, numpy <span class="kw">as</span> np
+<span class="kw">import</span> matplotlib.pyplot <span class="kw">as</span> plt, seaborn <span class="kw">as</span> sns
+<span class="kw">from</span> scipy <span class="kw">import</span> stats
+PRIMARY_COLOR   = <span class="st">'#00aaff'</span>
+SECONDARY_COLOR = <span class="st">'#ff4d6d'</span>
+ACCENT_COLOR    = <span class="st">'#00e5a0'</span></div>
+    </div>
+  </div>
+  <div class="cell out-cell">
+    <div class="gutter"></div>
+    <div class="cbody"><div class="ct" style="color:#3fb950">✓ Setup complete</div></div>
+  </div>
+
+  <div class="cell code-cell">
+    <div class="gutter"><div class="cn">[2]</div><div class="cr">▶</div></div>
+    <div class="cbody"><div class="ct" id="load-code"></div></div>
+  </div>
+  <div class="cell out-cell">
+    <div class="gutter"></div>
+    <div class="cbody"><div class="ct" style="color:#3fb950" id="load-out"></div></div>
+  </div>
+
+  <div class="cell md-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="h2t">Executive summary</div>
+      <div class="mdt" id="exec-summary"></div>
+    </div>
+  </div>
+
+  <div class="cell md-cell"><div class="gutter"></div><div class="cbody"><div class="h2t" id="s1-title"></div></div></div>
+  <div class="cell out-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="mrow" id="metric-row">
+        <div class="mc"><div class="ml">Records</div><div class="mv" id="m1v" style="color:#58a6ff"></div><div class="ms" style="color:#58a6ff">total rows</div></div>
+        <div class="mc"><div class="ml" id="m2l"></div><div class="mv" id="m2v"></div><div class="ms" id="m2s"></div></div>
+        <div class="mc"><div class="ml">Features</div><div class="mv" id="m3v" style="color:#3fb950"></div><div class="ms" id="m3s" style="color:#3fb950"></div></div>
+        <div class="mc"><div class="ml">Data quality</div><div class="mv" id="m4v"></div><div class="ms" id="m4s"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cell md-cell"><div class="gutter"></div><div class="cbody"><div class="h2t" id="s2-title"></div></div></div>
+  <div class="cell out-cell"><div class="gutter"></div><div class="cbody"><div style="position:relative;width:100%;height:150px"><canvas id="c_target"></canvas></div></div></div>
+
+  <div class="cell md-cell"><div class="gutter"></div><div class="cbody"><div class="h2t" id="s3-title"></div></div></div>
+  <div class="cell out-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="cgrid">
+        <div class="cbox"><div class="clbl" id="f1l"></div><div style="position:relative;height:120px"><canvas id="c_f1"></canvas></div></div>
+        <div class="cbox"><div class="clbl" id="f2l"></div><div style="position:relative;height:120px"><canvas id="c_f2"></canvas></div></div>
+        <div class="cbox"><div class="clbl" id="f3l"></div><div style="position:relative;height:120px"><canvas id="c_f3"></canvas></div></div>
+        <div class="cbox"><div class="clbl" id="f4l"></div><div style="position:relative;height:120px"><canvas id="c_f4"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cell md-cell"><div class="gutter"></div><div class="cbody"><div class="h2t" id="s4-title"></div></div></div>
+  <div class="cell out-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <table class="lt">
+        <thead><tr><th>Feature</th><th id="lh1"></th><th id="lh2"></th><th>Lift</th><th>p-value</th><th>Signal</th></tr></thead>
+        <tbody id="lift-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="cell md-cell"><div class="gutter"></div><div class="cbody"><div class="h2t" id="s5-title"></div></div></div>
+  <div class="cell out-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="cgrid">
+        <div class="cbox"><div class="clbl" id="c1l"></div><div style="position:relative;height:140px"><canvas id="c_cat1"></canvas></div></div>
+        <div class="cbox"><div class="clbl" id="c2l"></div><div style="position:relative;height:140px"><canvas id="c_cat2"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cell md-cell"><div class="gutter"></div><div class="cbody"><div class="h2t" id="s6-title"></div></div></div>
+  <div class="cell out-cell"><div class="gutter"></div><div class="cbody"><div style="position:relative;width:100%;height:160px"><canvas id="c_domain"></canvas></div></div></div>
+
+  <div class="cell md-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="h2t">Section 7 — AI-generated insights</div>
+      <div id="insights-list"></div>
+    </div>
+  </div>
+
+  <div class="cell md-cell">
+    <div class="gutter"></div>
+    <div class="cbody">
+      <div class="h2t">Executive summary</div>
+      <div class="mdt" id="exec-footer"></div>
+      <div style="margin-top:6px;color:#484f58;font-size:9px;font-family:sans-serif;font-style:italic" id="domain-footer"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PC='#00aaff',SC='#ff4d6d',AC='#00e5a0',GC='#21262d',TC='#484f58';
+const baseOpts=()=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b949e',font:{size:9},boxWidth:8}}},scales:{x:{ticks:{color:TC,font:{size:8},maxTicksLimit:5},grid:{color:GC}},y:{ticks:{color:TC,font:{size:8}},grid:{color:GC}}}});
+let charts={};
+function destroyAll(){Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});charts={};}
+const norm=(n,m,s)=>Array.from({length:n},()=>{let u=0,v=0;while(!u){u=Math.random();v=Math.random();}return m+s*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);});
+const rng=(n,a,b)=>Array.from({length:n},()=>a+Math.random()*(b-a));
+const clamp=(arr,lo,hi)=>arr.map(v=>Math.max(lo,Math.min(hi,v)));
+function mkHist(id,allD,posD,bins,mn,mx){const sz=(mx-mn)/bins,aB=new Array(bins).fill(0),pB=new Array(bins).fill(0);allD.forEach(v=>{const i=Math.min(Math.floor((v-mn)/sz),bins-1);aB[i]++;});posD.forEach(v=>{const i=Math.min(Math.floor((v-mn)/sz),bins-1);pB[i]++;});charts[id]=new Chart(document.getElementById(id),{type:'bar',data:{labels:aB.map((_,i)=>(mn+i*sz).toFixed(0)),datasets:[{label:'All',data:aB,backgroundColor:'rgba(0,170,255,.3)',borderColor:PC,borderWidth:.5},{label:'Pos',data:pB,backgroundColor:'rgba(255,77,109,.5)',borderColor:SC,borderWidth:.5}]},options:{...baseOpts(),plugins:{legend:{labels:{color:'#8b949e',font:{size:8},boxWidth:7}}}}});}
+function mkBar(id,labels,allD,posD,horiz=false){charts[id]=new Chart(document.getElementById(id),{type:'bar',indexAxis:horiz?'y':'x',data:{labels,datasets:[{label:'All',data:allD,backgroundColor:'rgba(0,170,255,.3)',borderColor:PC,borderWidth:.5},{label:'Pos',data:posD,backgroundColor:'rgba(255,77,109,.5)',borderColor:SC,borderWidth:.5}]},options:{...baseOpts(),plugins:{legend:{labels:{color:'#8b949e',font:{size:8},boxWidth:7}}}}});}
+function mkLine(id,labels,datasets){charts[id]=new Chart(document.getElementById(id),{type:'line',data:{labels,datasets},options:{...baseOpts(),elements:{point:{radius:2}}}});}
+
+const DOMAINS={
+  tennis:{file:'tennis_eda_report.ipynb',title:'Tennis Match Statistics — EDA Report',domain:'Sports',target:'upset',loadOut:'Loaded 1,500 rows × 16 columns\nTarget: upset\n0    1148\n1     352',exec:'The dataset covers <b>1,500 ATP matches</b> across four surfaces with an upset rate of <span style="color:#f78166;font-weight:600">23.5%</span>. Strongest upset predictors: <b>rank_diff</b> (lift <span style="color:#f78166;font-weight:600">2.1×</span>) and <b>surface</b> (Clay shows highest upset rate at <span style="color:#f78166;font-weight:600">31%</span>). Grand Slam matches have significantly lower upset rates. <span class="badge badge-b">0 missing values</span>',metrics:['1,500','23.5%','352 upsets','16','9 num / 4 cat','100%','no nulls'],m2l:'Upset rate',m2c:'#f78166',s1:'Section 1 — Dataset overview',s2:'Section 2 — Target distribution (upset)',s3:'Section 3 — Feature distributions',s4:'Section 4 — Feature lift table',s5:'Section 5 — Categorical breakdown',s6:'Section 6 — Serve efficiency by surface',lh1:'Upset mean',lh2:'Non-upset mean',f1:'rank_diff',f2:'match_duration_min',f3:'winner_first_serve_pct',f4:'winner_ace_count',c1:'surface',c2:'tournament_level',lift:[{f:'rank_diff',p:'64.2',n:'30.5',lift:'2.1×',pv:'0.000001',w:72,c:'#f78166'},{f:'match_duration',p:'108',n:'89',lift:'1.2×',pv:'0.000420',w:28,c:'#d29922'},{f:'winner_ace_count',p:'5.1',n:'7.2',lift:'0.7×',pv:'0.003100',w:18,c:'#58a6ff'},{f:'sets_played',p:'2.6',n:'2.4',lift:'1.1×',pv:'0.082000',w:8,c:'#484f58'}],insights:[{s:'h',t:'Rank differential drives upsets (2.1× lift)',d:'Matches where rank gap exceeds 80 places see upset rates of 38% vs 11% for close-ranked matches. p < 0.000001.'},{s:'h',t:'Clay surface has highest upset rate at 31%',d:'Clay upsets occur 31% of the time vs 19% on Hard and 16% on Grass. Slower surfaces reduce serve advantage of higher-ranked players.'},{s:'m',t:'Grand Slam upsets are rarest at 14%',d:'Best-of-5 format gives top players more recovery time, resulting in significantly fewer upsets than ATP 250 events (29%).'},{s:'m',t:'Upset matches last 21% longer on average',d:'Upset matches average 108 minutes vs 89 for expected results — closer competition extends match duration across all surfaces.'},{s:'l',t:'Serve stats show weaker signal than expected',d:'winner_first_serve_pct lift is only 0.7× — ranking gap matters more than serve dominance in predicting outcomes.'}],footer:'1,500 ATP matches analysed. Upset rate of 23.5% is strongly predicted by <b>rank differential</b> and <b>surface type</b>. Clay and ATP 250-level events are the highest-risk contexts for upsets.',buildCharts:()=>{charts.c_target=new Chart(document.getElementById('c_target'),{type:'bar',data:{labels:['Non-upset (76.5%)','Upset (23.5%)'],datasets:[{data:[1148,352],backgroundColor:[PC,SC],borderWidth:0}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});const rd_all=norm(1500,45,30).map(v=>Math.abs(v)+2),rd_pos=norm(352,64,28).map(v=>Math.abs(v)+5);mkHist('c_f1',rd_all,rd_pos,14,0,180);mkHist('c_f2',clamp(norm(1500,95,25),45,220),clamp(norm(352,110,28),50,220),14,40,220);mkHist('c_f3',clamp(norm(1500,61,6),42,80),clamp(norm(352,57,7),38,78),12,38,82);mkHist('c_f4',Array.from({length:1500},()=>Math.max(0,Math.round(norm(1,6.5,3.5)[0]))),Array.from({length:352},()=>Math.max(0,Math.round(norm(1,5.1,3.2)[0]))),12,0,24);mkBar('c_cat1',['Hard','Clay','Grass','Carpet'],[820,375,225,80],[156,116,54,26],true);mkBar('c_cat2',['Grand Slam','Masters','ATP 500','ATP 250'],[180,300,420,600],[25,66,105,156],true);charts.c_domain=new Chart(document.getElementById('c_domain'),{type:'bar',data:{labels:['Hard','Clay','Grass','Carpet'],datasets:[{label:'1st serve %',data:[63,57,68,62],backgroundColor:'rgba(0,170,255,.5)',borderColor:PC,borderWidth:.5},{label:'Ace count ×10',data:[52,48,61,55],backgroundColor:'rgba(0,229,160,.4)',borderColor:AC,borderWidth:.5}]},options:{...baseOpts(),plugins:{legend:{labels:{color:'#8b949e',font:{size:9},boxWidth:7}}}}});}},
+  fraud:{file:'fraud_eda_report.ipynb',title:'Credit Card Fraud — EDA Report',domain:'Fraud',target:'is_fraud',loadOut:'Loaded 2,000 rows × 9 columns\nTarget: is_fraud\n0    1904\n1      96',exec:'The dataset contains <b>2,000 transactions</b> with a fraud rate of <span style="color:#f78166;font-weight:600">4.80%</span> (96 cases). Strongest signals: <b>velocity_24h</b> (lift <span style="color:#f78166;font-weight:600">5.8×</span>), <b>transaction_hour</b> (lift <span style="color:#f78166;font-weight:600">2.4×</span>), <b>amount</b> (lift <span style="color:#f78166;font-weight:600">2.1×</span>). Fraud clusters in <b>off-hours (1–4 AM)</b>. <span class="badge badge-r">2 cols w/ nulls</span>',metrics:['2,000','4.80%','96 flagged','9','4 num / 3 cat','99.3%','2 cols w/ nulls'],m2l:'Fraud rate',m2c:'#f78166',s1:'Section 1 — Dataset overview',s2:'Section 2 — Target distribution (is_fraud)',s3:'Section 3 — Feature distributions',s4:'Section 4 — Feature lift table',s5:'Section 5 — Categorical breakdown',s6:'Section 6 — Off-hours fraud concentration',lh1:'Fraud mean',lh2:'Legit mean',f1:'amount',f2:'velocity_24h',f3:'transaction_hour',f4:'customer_age',c1:'merchant_category',c2:'country',lift:[{f:'velocity_24h',p:'11.8',n:'2.1',lift:'5.8×',pv:'0.000001',w:74,c:'#f78166'},{f:'transaction_hour',p:'3.2',n:'13.4',lift:'2.4×',pv:'0.000003',w:48,c:'#f78166'},{f:'amount',p:'742',n:'348',lift:'2.1×',pv:'0.000018',w:42,c:'#f78166'},{f:'customer_age',p:'41.2',n:'43.1',lift:'1.0×',pv:'0.341000',w:6,c:'#484f58'}],insights:[{s:'h',t:'Extreme velocity lift (5.8×)',d:'Fraudulent transactions average 11.8 card uses in 24h vs 2.1 for legitimate. Mann-Whitney U p < 0.000001 — the single strongest feature.'},{s:'h',t:'Off-hours concentration — 78% of fraud at 1–4 AM',d:'transaction_hour mean 3.2 vs 13.4 for legitimate. A simple hour-of-day filter alone would flag ~60% of fraud cases.'},{s:'m',t:'Amount skew — $742 fraud avg vs $348 legit',d:'Distribution is highly right-skewed. Log-transform recommended before model training to reduce influence of extreme outliers.'},{s:'m',t:'Geographic concentration in NG, RO, BR',d:'These three countries account for 42% of fraud but only 6% of legitimate transactions — a strong categorical signal.'},{s:'l',t:'Missing values in 2 columns',d:'customer_age has 40 nulls (2.0%), merchant_category has 15 (0.75%). Median imputation for age, mode for category.'}],footer:'2,000 transactions analysed. Fraud rate of <span style="color:#f78166;font-weight:600">4.80%</span> strongly predicted by <b>velocity_24h</b> (5.8× lift) and <b>off-hours activity</b>. Recommend log-transforming amount and engineering is_off_hours binary feature.',buildCharts:()=>{charts.c_target=new Chart(document.getElementById('c_target'),{type:'bar',data:{labels:['Legit (95.2%)','Fraud (4.8%)'],datasets:[{data:[1904,96],backgroundColor:[PC,SC],borderWidth:0}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});mkHist('c_f1',[...norm(1904,85,60).map(v=>Math.abs(v)+5),...norm(96,742,300).map(v=>Math.abs(v)+100)],norm(96,742,300).map(v=>Math.abs(v)+100),16,0,2000);mkHist('c_f2',[...Array.from({length:1904},()=>Math.max(0,Math.round(norm(1,2,1.5)[0]))),...Array.from({length:96},()=>Math.max(1,Math.round(norm(1,12,4)[0])))],Array.from({length:96},()=>Math.max(1,Math.round(norm(1,12,4)[0]))),15,0,30);mkHist('c_f3',[...Array.from({length:1904},()=>Math.floor(rng(1,7,22)[0])),...Array.from({length:96},()=>Math.floor(rng(1,0,5)[0]))],Array.from({length:96},()=>Math.floor(rng(1,0,5)[0])),24,0,24);mkHist('c_f4',norm(1960,43,13).map(v=>Math.max(18,Math.min(80,Math.round(v)))),norm(96,41,13).map(v=>Math.max(18,Math.min(80,Math.round(v)))),12,18,75);mkBar('c_cat1',['grocery','restaurant','gas','online','atm','crypto'],[480,320,290,440,250,124],[3,4,5,18,46,20],true);mkBar('c_cat2',['US','CA','UK','NG','RO','BR','MX'],[1520,240,164,18,16,14,28],[29,5,4,18,16,15,9],true);const hrs=Array.from({length:24},(_,i)=>i);mkLine('c_domain',hrs.map(String),[{label:'Legit txns',data:hrs.map(h=>h>=7&&h<=21?Math.round(80+Math.random()*30):Math.round(5+Math.random()*10)),borderColor:PC,backgroundColor:'rgba(0,170,255,.1)',fill:true,tension:.4,borderWidth:1.5},{label:'Fraud txns',data:hrs.map(h=>h>=1&&h<=4?Math.round(18+Math.random()*12):Math.round(1+Math.random()*4)),borderColor:SC,backgroundColor:'rgba(255,77,109,.15)',fill:true,tension:.4,borderWidth:1.5}]);}},
+  sales:{file:'sales_eda_report.ipynb',title:'E-Commerce Sales — EDA Report',domain:'Sales',target:'return_flag',loadOut:'Loaded 3,000 rows × 12 columns\nTarget: return_flag\n0    2640\n1     360',exec:'The dataset covers <b>3,000 e-commerce orders</b> with a return rate of <span style="color:#f78166;font-weight:600">12.0%</span>. Strongest predictors: <b>discount_pct</b> (lift <span style="color:#f78166;font-weight:600">1.8×</span>) and <b>days_to_ship</b> (lift <span style="color:#f78166;font-weight:600">1.6×</span>). <b>Electronics</b> has the highest return rate at <span style="color:#f78166;font-weight:600">19%</span>. VIP customers return less (8%) vs New (16%). <span class="badge badge-g">0 missing values</span>',metrics:['3,000','12.0%','360 returned','12','5 num / 4 cat','100%','no nulls'],m2l:'Return rate',m2c:'#f78166',s1:'Section 1 — Dataset overview',s2:'Section 2 — Target distribution (return_flag)',s3:'Section 3 — Feature distributions',s4:'Section 4 — Feature lift table',s5:'Section 5 — Categorical breakdown',s6:'Section 6 — Revenue by category & customer type',lh1:'Returned mean',lh2:'Kept mean',f1:'revenue',f2:'discount_pct',f3:'days_to_ship',f4:'product_rating',c1:'category',c2:'customer_type',lift:[{f:'discount_pct',p:'21.4',n:'11.8',lift:'1.8×',pv:'0.000004',w:66,c:'#f78166'},{f:'days_to_ship',p:'4.8',n:'3.0',lift:'1.6×',pv:'0.000031',w:52,c:'#f78166'},{f:'product_rating',p:'3.6',n:'4.2',lift:'0.9×',pv:'0.000210',w:20,c:'#58a6ff'},{f:'quantity',p:'1.9',n:'1.8',lift:'1.1×',pv:'0.210000',w:6,c:'#484f58'}],insights:[{s:'h',t:'High-discount orders return at 1.8× rate',d:'Orders with 25–30% discount show 22% return rates vs 12% for full-price. Customers may over-buy when discounts apply.'},{s:'h',t:'Slow shipping increases returns (1.6× lift)',d:'Orders taking 5+ days to ship have 19% return rates vs 10% for 1–2 day shipping. Delivery experience directly impacts returns.'},{s:'m',t:'Electronics drives highest category return rate (19%)',d:'Electronics returns at 19% vs 8% for Books. Complex products with higher expectations and compatibility issues are more likely to be returned.'},{s:'m',t:'VIP customers return less (8% vs 16% for new)',d:'VIP members have clearer purchase intent and better product knowledge, leading to significantly lower return rates.'},{s:'l',t:'Rating inversely correlates with returns',d:'Returned items average 3.6 stars vs 4.2 for kept items — lower-rated products are more likely to be returned.'}],footer:'3,000 orders analysed. Return rate of <span style="color:#f78166;font-weight:600">12.0%</span> driven by <b>high discounts</b> and <b>slow shipping</b>. Recommend targeting high-discount Electronics with improved sizing guidance and prioritising faster fulfilment.',buildCharts:()=>{charts.c_target=new Chart(document.getElementById('c_target'),{type:'bar',data:{labels:['Kept (88%)','Returned (12%)'],datasets:[{data:[2640,360],backgroundColor:[PC,SC],borderWidth:0}]},options:{...baseOpts(),plugins:{legend:{display:false}}}});mkHist('c_f1',[...norm(2640,280,120).map(v=>Math.abs(v)+10),...norm(360,210,100).map(v=>Math.abs(v)+10)],norm(360,210,100).map(v=>Math.abs(v)+10),14,0,800);mkHist('c_f2',[...Array.from({length:2640},()=>Math.round(rng(1,0,30)[0]/5)*5),...Array.from({length:360},()=>Math.round(rng(1,10,30)[0]/5)*5)],Array.from({length:360},()=>Math.round(rng(1,10,30)[0]/5)*5),7,0,35);mkHist('c_f3',[...Array.from({length:2640},()=>Math.ceil(rng(1,1,7)[0])),...Array.from({length:360},()=>Math.ceil(rng(1,3,7)[0]))],Array.from({length:360},()=>Math.ceil(rng(1,3,7)[0])),7,0,8);mkHist('c_f4',[...norm(2640,4.2,.5).map(v=>Math.max(1,Math.min(5,v))),...norm(360,3.6,.7).map(v=>Math.max(1,Math.min(5,v)))],norm(360,3.6,.7).map(v=>Math.max(1,Math.min(5,v))),8,1,5);mkBar('c_cat1',['Electronics','Clothing','Home','Sports','Books'],[750,900,600,450,300],[143,108,54,36,19],true);mkBar('c_cat2',['New','Returning','VIP'],[1200,1350,450],[192,135,33],true);charts.c_domain=new Chart(document.getElementById('c_domain'),{type:'bar',data:{labels:['Electronics','Clothing','Home','Sports','Books'],datasets:[{label:'New',data:[420,72,130,88,24],backgroundColor:'rgba(0,170,255,.5)',borderColor:PC,borderWidth:.5},{label:'Returning',data:[380,68,125,82,22],backgroundColor:'rgba(0,229,160,.4)',borderColor:AC,borderWidth:.5},{label:'VIP',data:[510,85,145,98,28],backgroundColor:'rgba(255,77,109,.4)',borderColor:SC,borderWidth:.5}]},options:{...baseOpts(),plugins:{legend:{labels:{color:'#8b949e',font:{size:9},boxWidth:7}}}}});}}
+};
+
+let currentDomain='tennis';
+function switchDomain(name){if(name===currentDomain)return;currentDomain=name;document.querySelectorAll('.ds-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase()===name));destroyAll();renderDomain(name);}
+function renderDomain(name){
+  const d=DOMAINS[name];
+  document.getElementById('nb-title').textContent=d.file;
+  document.getElementById('nb-h1').textContent=d.title;
+  document.getElementById('load-code').innerHTML=`<span class="cm"># Load data</span>\ndf = pd.read_csv(<span class="st">'${d.file.replace('_report.ipynb','.csv')}'</span>)\ntarget_col = <span class="st">'${d.target}'</span>\n<span class="fn">print</span>(f<span class="st">"Loaded {len(df):,} rows"</span>)`;
+  document.getElementById('load-out').textContent=d.loadOut;
+  document.getElementById('exec-summary').innerHTML=d.exec;
+  document.getElementById('m2l').textContent=d.m2l;
+  document.getElementById('m1v').textContent=d.metrics[0];
+  document.getElementById('m2v').textContent=d.metrics[1];
+  document.getElementById('m2v').style.color=d.m2c;
+  document.getElementById('m2s').textContent=d.metrics[2];
+  document.getElementById('m2s').style.color=d.m2c;
+  document.getElementById('m3v').textContent=d.metrics[3];
+  document.getElementById('m3s').textContent=d.metrics[4];
+  const q=d.metrics[5]==='100%';
+  document.getElementById('m4v').textContent=d.metrics[5];
+  document.getElementById('m4v').style.color=q?'#3fb950':'#d29922';
+  document.getElementById('m4s').textContent=d.metrics[6];
+  document.getElementById('m4s').style.color=q?'#3fb950':'#d29922';
+  ['s1','s2','s3','s4','s5','s6'].forEach(k=>document.getElementById(k+'-title').textContent=d[k]);
+  document.getElementById('lh1').textContent=d.lh1;
+  document.getElementById('lh2').textContent=d.lh2;
+  ['f1','f2','f3','f4'].forEach(k=>document.getElementById(k+'l').textContent=d[k]);
+  document.getElementById('c1l').textContent=d.c1;
+  document.getElementById('c2l').textContent=d.c2;
+  document.getElementById('lift-tbody').innerHTML=d.lift.map(r=>`<tr><td>${r.f}</td><td style="color:#f78166">${r.p}</td><td style="color:#3fb950">${r.n}</td><td style="color:${r.c};font-weight:600">${r.lift}</td><td style="color:${parseFloat(r.pv)<0.05?'#3fb950':'#d29922'}">${r.pv}</td><td><div class="lbg"><div class="lbf" style="width:${r.w}px;background:${r.c}"></div></div></td></tr>`).join('');
+  document.getElementById('insights-list').innerHTML=d.insights.map(i=>`<div class="ins ${i.s}"><span class="isv">${i.s==='h'?'HIGH':i.s==='m'?'MED':'LOW'}</span><span class="itx"><b>${i.t}</b><br>${i.d}</span></div>`).join('');
+  document.getElementById('exec-footer').innerHTML=d.footer;
+  document.getElementById('domain-footer').textContent=`Domain: ${d.domain} · Generated by EDAAgent · Vertex AI / Gemini 2.0 Flash`;
+  d.buildCharts();
+}
+renderDomain('tennis');
+</script>
+</body>
+</html>
