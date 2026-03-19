@@ -16,6 +16,7 @@ from fraud_eda_agent import EDAAgent
 agent = EDAAgent(
     project="YOUR_GCP_PROJECT_ID",
     location="us-central1",
+    model_name="gemini-2.5-flash",   # or gemini-2.0-flash-001, gemini-1.5-pro-002
 )
 
 

@@ -54,6 +54,8 @@ from vertexai.generative_models import (
     GenerativeModel,
     Tool,
     GenerationConfig,
+    Part,
+    Content,
 )
 
 
@@ -289,6 +291,7 @@ Rules:
 
 def _run_planning(
     model: GenerativeModel,
+    model_name: str,
     summary: dict,
     user_goal: Optional[str],
     user_target: Optional[str],
@@ -349,7 +352,7 @@ def _run_planning(
         print("  → Phase 1: planning...")
 
     planning_model = GenerativeModel(
-        model_name="gemini-2.0-flash-001",
+        model_name=model_name,  # same model as generation
         generation_config=GenerationConfig(temperature=0.1, max_output_tokens=4096),
     )
     resp = planning_model.generate_content(prompt)
@@ -513,21 +516,25 @@ EDA_TOOLS = Tool(function_declarations=[ADD_MARKDOWN, ADD_CODE, FINISH])
 class EDAAgent:
     def __init__(
         self,
-        project:  Optional[str] = None,
-        location: str = "us-central1",
+        project:    Optional[str] = None,
+        location:   str = "us-central1",
+        model_name: str = "gemini-2.5-flash",
     ):
         """
         Parameters
         ----------
-        project  : GCP project ID (falls back to GOOGLE_CLOUD_PROJECT env var)
-        location : Vertex AI region
+        project    : GCP project ID (falls back to GOOGLE_CLOUD_PROJECT env var)
+        location   : Vertex AI region
+        model_name : Gemini model to use. Defaults to gemini-2.5-flash.
+                     Other options: gemini-2.0-flash-001, gemini-1.5-pro-002
         """
-        self.project  = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        self.location = location
+        self.project    = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        self.location   = location
+        self.model_name = model_name
         vertexai.init(project=self.project, location=self.location)
 
         self._gen_model = GenerativeModel(
-            model_name="gemini-2.0-flash-001",
+            model_name=self.model_name,
             tools=[EDA_TOOLS],
             generation_config=GenerationConfig(temperature=0.2, max_output_tokens=4096),
         )
@@ -572,6 +579,7 @@ class EDAAgent:
         # ── Phase 1: planning ────────────────────────────────────────────────
         plan = _run_planning(
             model=self._gen_model,
+            model_name=self.model_name,
             summary=summary,
             user_goal=goal,
             user_target=target_col,
@@ -603,7 +611,7 @@ class EDAAgent:
 
         gen_prompt  = _build_generation_prompt(plan, summary)
         chat        = self._gen_model.start_chat()
-        pending_msg = gen_prompt
+        pending_msg = gen_prompt   # first turn: plain string
         done        = False
         cell_count  = 0
 
@@ -612,14 +620,16 @@ class EDAAgent:
                 print(f"  → Gemini writing (cells: {cell_count})...")
 
             response    = chat.send_message(pending_msg)
-            pending_msg = []
+            fn_parts    = []   # collect Part objects for this turn
 
             for part in response.candidates[0].content.parts:
-                if not hasattr(part, "function_call") or not part.function_call:
+                # Gemini 2.5 may include thought/text parts — skip non-function parts
+                fc = getattr(part, "function_call", None)
+                if not fc or not getattr(fc, "name", None):
                     continue
 
-                fn   = part.function_call.name
-                args = dict(part.function_call.args)
+                fn   = fc.name
+                args = dict(fc.args)
 
                 if fn == "add_markdown_section":
                     nb.add_markdown(args["content"])
@@ -627,14 +637,14 @@ class EDAAgent:
                     if verbose:
                         preview = args["content"][:70].replace("\n", " ")
                         print(f"    + markdown : {preview}…")
-                    pending_msg.append(self._fn_resp(fn, "added"))
+                    fn_parts.append(self._fn_resp(fn, "added"))
 
                 elif fn == "add_code_cell":
                     nb.add_code(args["code"])
                     cell_count += 1
                     if verbose:
                         print(f"    + code     : {args.get('purpose', '')}")
-                    pending_msg.append(self._fn_resp(fn, "added"))
+                    fn_parts.append(self._fn_resp(fn, "added"))
 
                 elif fn == "finish_notebook":
                     nb.add_markdown(
@@ -645,9 +655,15 @@ class EDAAgent:
                     done = True
                     if verbose:
                         print("  → finish_notebook called.")
-                    pending_msg.append(self._fn_resp(fn, "complete"))
+                    fn_parts.append(self._fn_resp(fn, "complete"))
 
-            if not pending_msg:
+            if fn_parts:
+                # Send all function responses as a single Content object
+                pending_msg = Content(
+                    role="user",
+                    parts=fn_parts,
+                )
+            else:
                 if verbose:
                     print("  → No more function calls — saving.")
                 done = True
@@ -659,7 +675,9 @@ class EDAAgent:
         return str(Path(output).resolve())
 
     @staticmethod
-    def _fn_resp(name: str, result: str) -> dict:
-        return {"role": "user", "parts": [{"function_response": {
-            "name": name, "response": {"result": result}
-        }}]}
+    def _fn_resp(name: str, result: str) -> "Part":
+        """Return a Vertex AI Part containing a function response."""
+        return Part.from_function_response(
+            name=name,
+            response={"result": result},
+        )
