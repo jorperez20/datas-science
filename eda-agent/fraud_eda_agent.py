@@ -389,6 +389,69 @@ Rules:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 — Vertex AI Function Declarations (tool definitions)
+# ─────────────────────────────────────────────────────────────────────────────
+
+ADD_MARKDOWN = FunctionDeclaration(
+    name="add_markdown_section",
+    description="Add a markdown cell — section heading, narrative, or insight bullets.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "Markdown text to insert into the notebook.",
+            }
+        },
+        "required": ["content"],
+    },
+)
+
+ADD_CODE = FunctionDeclaration(
+    name="add_code_cell",
+    description=(
+        "Add a Python code cell to the notebook. "
+        "Pre-available variables: df, target_col (may be None), "
+        "PRIMARY_COLOR, SECONDARY_COLOR, ACCENT_COLOR, pd, np, plt, sns, stats. "
+        "End every chart cell with plt.tight_layout() and plt.show()."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "description": "Runnable Python code to add.",
+            },
+            "purpose": {
+                "type": "string",
+                "description": "One-line description of what this cell does.",
+            },
+        },
+        "required": ["code", "purpose"],
+    },
+)
+
+FINISH = FunctionDeclaration(
+    name="finish_notebook",
+    description=(
+        "Call this once all sections are written to signal the notebook is complete."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "2-3 sentence executive summary citing specific numbers.",
+            }
+        },
+        "required": ["summary"],
+    },
+)
+
+EDA_TOOLS = Tool(function_declarations=[ADD_MARKDOWN, ADD_CODE, FINISH])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Agent
 # ─────────────────────────────────────────────────────────────────────────────
 
