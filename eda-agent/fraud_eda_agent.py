@@ -536,7 +536,7 @@ class EDAAgent:
         self._gen_model = GenerativeModel(
             model_name=self.model_name,
             tools=[EDA_TOOLS],
-            generation_config=GenerationConfig(temperature=0.2, max_output_tokens=4096),
+            generation_config=GenerationConfig(temperature=0.2, max_output_tokens=8192),
         )
 
     def run(
@@ -610,7 +610,7 @@ class EDAAgent:
             print("  → Phase 2: generating notebook cells...")
 
         gen_prompt  = _build_generation_prompt(plan, summary)
-        chat        = self._gen_model.start_chat()
+        chat        = self._gen_model.start_chat(response_validation=False)
         pending_msg = gen_prompt   # first turn: plain string
         done        = False
         cell_count  = 0
@@ -622,7 +622,14 @@ class EDAAgent:
             response    = chat.send_message(pending_msg)
             fn_parts    = []   # collect Part objects for this turn
 
-            for part in response.candidates[0].content.parts:
+            # Check finish reason — 2 = MAX_TOKENS, handle gracefully
+            candidate = response.candidates[0]
+            finish_reason = getattr(candidate, "finish_reason", None)
+            if finish_reason and str(finish_reason) in ("2", "FinishReason.MAX_TOKENS"):
+                if verbose:
+                    print("  ⚠ Response hit token limit — processing partial response and continuing...")
+
+            for part in candidate.content.parts:
                 # Gemini 2.5 may include thought/text parts — skip non-function parts
                 fc = getattr(part, "function_call", None)
                 if not fc or not getattr(fc, "name", None):
