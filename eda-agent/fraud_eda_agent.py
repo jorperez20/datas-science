@@ -312,11 +312,35 @@ def _run_planning(
         f"\nAnalysis goal (set by user): \"{user_goal}\""
         if user_goal else ""
     )
+    # Trim summary for planning — only needs structure, not full per-class stats
+    # This prevents truncation on wide datasets with many numeric columns
+    planning_summary = {
+        "shape":        summary["shape"],
+        "columns":      summary["columns"],
+        "dtypes":       summary["dtypes"],
+        "target":       summary["target"],
+        "target_stats": summary["target_stats"],
+        "missing":      summary["missing"],
+        "sample_rows":  summary["sample_rows"][:3],
+        # Slim numeric stats — just col name, mean, std, missing for planning
+        "num_stats": [
+            {k: v for k, v in s.items()
+             if k in ("col", "mean", "std", "min", "max", "missing_pct", "skew", "lift", "mw_pval")}
+            for s in summary["num_stats"]
+        ],
+        # Slim cat stats — just col name and top 5 values
+        "cat_stats": [
+            {"col": s["col"], "n_unique": s["n_unique"],
+             "top_values": dict(list(s["top_values"].items())[:5])}
+            for s in summary["cat_stats"]
+        ],
+    }
+
     prompt = (
         f"{PLANNING_PROMPT}"
         f"{context_block}\n\n"
         "Dataset statistics:\n"
-        f"```json\n{json.dumps(summary, indent=2)}\n```"
+        f"```json\n{json.dumps(planning_summary, indent=2)}\n```"
         f"{target_hint}{goal_hint}\n\n"
         "Return the analysis plan JSON now."
     )
@@ -326,18 +350,49 @@ def _run_planning(
 
     planning_model = GenerativeModel(
         model_name="gemini-2.0-flash-001",
-        generation_config=GenerationConfig(temperature=0.1, max_output_tokens=2048),
+        generation_config=GenerationConfig(temperature=0.1, max_output_tokens=4096),
     )
     resp = planning_model.generate_content(prompt)
     raw  = resp.text.strip()
 
-    if raw.startswith("```"):
+    # Strip markdown code fences if present
+    if "```" in raw:
         raw = "\n".join(
             line for line in raw.splitlines()
             if not line.strip().startswith("```")
         ).strip()
 
-    plan = json.loads(raw)
+    # Robust parse — handle truncated responses gracefully
+    try:
+        plan = json.loads(raw)
+    except json.JSONDecodeError:
+        if verbose:
+            print("  → Planning response truncated, retrying with slim summary...")
+        slim_summary = {
+            "shape":       summary["shape"],
+            "columns":     summary["columns"],
+            "dtypes":      summary["dtypes"],
+            "target":      summary["target"],
+            "sample_rows": summary["sample_rows"][:3],
+            "missing":     summary["missing"],
+        }
+        retry_prompt = (
+            f"{PLANNING_PROMPT}"
+            f"{context_block}\n\n"
+            "Dataset statistics (condensed):\n"
+            f"```json\n{json.dumps(slim_summary, indent=2)}\n```"
+            f"{target_hint}{goal_hint}\n\n"
+            "Return the analysis plan JSON now. Keep section descriptions brief."
+        )
+        resp2 = planning_model.generate_content(retry_prompt)
+        raw2  = resp2.text.strip()
+        if "```" in raw2:
+            raw2 = "\n".join(
+                line for line in raw2.splitlines()
+                if not line.strip().startswith("```")
+            ).strip()
+        plan = json.loads(raw2)
+
 
     if verbose:
         print(f"  → Domain detected: {plan.get('domain_label', plan.get('domain'))}")
