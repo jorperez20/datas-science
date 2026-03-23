@@ -446,7 +446,7 @@ Rules:
 - CRITICAL: All f-strings must use double quotes f"..." never f'...'.
   When using column names in labels always pre-assign first:
     label = col.replace("_", " ").title()
-    axes[i].set_title(f"Distribution of {label}")  # correct
+    axes[i].set_title(f"Distribution of {{label}}")  # correct
   Never embed string method calls inside single-quoted f-strings.
 """
 
@@ -480,7 +480,7 @@ ADD_CODE = FunctionDeclaration(
         "CRITICAL f-string rule: always use double-quoted f-strings. "
         "Never embed .replace() or .title() calls inside f-string quotes. "
         "Instead pre-assign the label: label = col.replace(chr(95), chr(32)).title() "
-        "then reference it: f\"Distribution of {label}\". "
+        "then reference it: f\"Distribution of {{label}}\". "
     ),
     parameters={
         "type": "object",
