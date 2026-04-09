@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 import os
 import textwrap
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -125,39 +126,230 @@ class NotebookBuilder:
 # Statistics helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_summary(df: pd.DataFrame, target: Optional[str]) -> dict:
+def _classify_columns_with_ai(
+    df: pd.DataFrame,
+    model_name: str,
+    verbose: bool = True,
+) -> dict:
     """
-    Compute dataset statistics independently of domain.
+    Ask Gemini to classify each column and recommend which stats to compute.
+    Processes columns in batches of 8 to keep responses small and reliable.
+    Falls back to dtype-based classification if the AI call fails.
+    """
+    if verbose:
+        print("  → Classifying columns with Gemini...")
+
+    classification_model = GenerativeModel(
+        model_name=model_name,
+        generation_config=GenerationConfig(temperature=0.0, max_output_tokens=4096),
+    )
+
+    BATCH_SIZE = 8
+    all_columns = list(df.columns)
+    result = {}
+
+    for batch_start in range(0, len(all_columns), BATCH_SIZE):
+        batch_cols = all_columns[batch_start:batch_start + BATCH_SIZE]
+
+        column_profiles = []
+        for col in batch_cols:
+            try:
+                sample_vals = (
+                    df[col].dropna()
+                    .sample(min(10, int(df[col].nunique())), random_state=42)
+                    .tolist()
+                )
+            except Exception:
+                sample_vals = df[col].dropna().head(10).tolist()
+            # sanitize sample values to only JSON-safe types
+            safe_vals = []
+            for v in sample_vals:
+                if isinstance(v, (int, float, bool, str)) and not (isinstance(v, float) and (v != v)):
+                    safe_vals.append(v)
+                else:
+                    safe_vals.append(str(v))
+            column_profiles.append({
+                "name":          col,
+                "dtype":         str(df[col].dtype),
+                "n_unique":      int(df[col].nunique()),
+                "sample_values": safe_vals,
+            })
+
+        prompt = (
+            "You are a data scientist classifying dataset columns.\n"
+            "For each column return a JSON object with these exact keys:\n"
+            "  name: the column name (string)\n"
+            "  semantic_type: one of continuous, categorical, identifier, binary_flag, ordinal, circular, datetime, text\n"
+            "  compute_stats: array from [mean, std, skew, quantiles, missing_pct, value_counts, positive_rate] or [none]\n"
+            "  reason: one short sentence, NO apostrophes or special characters\n\n"
+            "Rules:\n"
+            "  identifier  -> [none]\n"
+            "  binary_flag -> [positive_rate, missing_pct]\n"
+            "  circular    -> [value_counts, missing_pct]\n"
+            "  categorical -> [value_counts, missing_pct]\n"
+            "  ordinal     -> [value_counts, quantiles, missing_pct]\n"
+            "  continuous  -> [mean, std, skew, quantiles, missing_pct]\n"
+            "  datetime    -> [none]\n"
+            "  text        -> [none]\n\n"
+            "Return ONLY a JSON array. No markdown, no prose, no comments, no trailing commas.\n\n"
+            f"Columns:\n{json.dumps(column_profiles, indent=2)}\n\n"
+            "JSON array:"
+        )
+
+        try:
+            batch_result = _parse_classification_response(
+                classification_model.generate_content(prompt).text,
+                classification_model,
+                prompt,
+                verbose,
+            )
+            result.update(batch_result)
+            if verbose:
+                for col, info in batch_result.items():
+                    print(f"    {col}: {info['semantic_type']} — {info['reason']}")
+        except Exception as e:
+            if verbose:
+                print(f"  ⚠ Batch {batch_start//BATCH_SIZE + 1} failed ({e}) — using fallback for this batch.")
+            fallback = _classify_columns_fallback(df[batch_cols])
+            result.update(fallback)
+
+    return result
+
+
+def _clean_json(raw: str) -> str:
+    """Strip common issues from Gemini JSON responses."""
+    if "```" in raw:
+        raw = "\n".join(
+            line for line in raw.splitlines()
+            if not line.strip().startswith("```")
+        ).strip()
+    start = raw.find("[")
+    end   = raw.rfind("]")
+    if start != -1 and end != -1:
+        raw = raw[start:end + 1]
+    raw = re.sub(r'//[^\n]*', '', raw)           # remove // comments
+    raw = re.sub(r',\s*([}\]])', r'\1', raw)   # remove trailing commas
+    raw = re.sub(r'[\x00-\x1f\x7f]', ' ', raw) # remove control characters
+    return raw
+
+
+def _parse_classification_response(
+    raw_text: str,
+    model: "GenerativeModel",
+    original_prompt: str,
+    verbose: bool,
+) -> dict:
+    """Try to parse a classification response, retrying once if it fails."""
+    raw = _clean_json(raw_text.strip())
+    try:
+        classifications = json.loads(raw)
+        return {c["name"]: c for c in classifications}
+    except json.JSONDecodeError:
+        if verbose:
+            print("  ⚠ JSON parse failed on first attempt, retrying...")
+        retry_raw = _clean_json(
+            model.generate_content(
+                original_prompt + "\nIMPORTANT: Output ONLY the JSON array. "
+                "No apostrophes in reason strings. No comments. No trailing commas."
+            ).text.strip()
+        )
+        classifications = json.loads(retry_raw)
+        return {c["name"]: c for c in classifications}
+
+
+def _classify_columns_fallback(df: pd.DataFrame) -> dict:
+    """Dtype-based fallback when the AI classification call fails."""
+    result = {}
+    for col in df.columns:
+        n_unique  = df[col].nunique()
+        n_rows    = len(df)
+        dtype_str = str(df[col].dtype)
+
+        if n_unique / n_rows > 0.95 and n_unique > 100:
+            semantic_type = "identifier"
+            compute_stats = ["none"]
+        elif dtype_str in ("object", "category"):
+            semantic_type = "categorical"
+            compute_stats = ["value_counts", "missing_pct"]
+        elif set(df[col].dropna().unique()).issubset({0, 1}):
+            semantic_type = "binary_flag"
+            compute_stats = ["positive_rate", "missing_pct"]
+        elif n_unique <= 10:
+            semantic_type = "categorical"
+            compute_stats = ["value_counts", "missing_pct"]
+        else:
+            semantic_type = "continuous"
+            compute_stats = ["mean", "std", "skew", "quantiles", "missing_pct"]
+
+        result[col] = {
+            "name":          col,
+            "semantic_type": semantic_type,
+            "compute_stats": compute_stats,
+            "reason":        "fallback dtype-based classification",
+        }
+    return result
+
+def _compute_summary(
+    df:         pd.DataFrame,
+    target:     Optional[str],
+    model_name: str,
+    verbose:    bool = True,
+) -> dict:
+    """
+    Compute dataset statistics guided by AI column classification.
     If target is provided, include per-class breakdowns.
     """
+    # ── AI column classification ─────────────────────────────────────────
+    classifications = _classify_columns_with_ai(df, model_name, verbose)
+
     num_cols = [
         c for c in df.select_dtypes(include="number").columns
         if c != target
     ]
     cat_cols = list(df.select_dtypes(include=["object", "category"]).columns)
 
-    # ── numeric stats ────────────────────────────────────────────────────────
+    # ── numeric stats ────────────────────────────────────────────────────
     num_stats = []
     for col in num_cols:
-        vals = df[col].dropna()
-        if len(vals) == 0:
+        vals        = df[col].dropna()
+        col_info    = classifications.get(col, {})
+        sem_type    = col_info.get("semantic_type", "continuous")
+        to_compute  = set(col_info.get("compute_stats", ["mean", "std", "skew", "quantiles", "missing_pct"]))
+
+        if len(vals) == 0 or "none" in to_compute:
             continue
+
+        # skip columns better handled in the categorical block
+        if sem_type in ("categorical", "circular", "binary_flag", "identifier", "datetime", "text"):
+            continue
+
         entry = {
-            "col":         col,
-            "mean":        round(float(vals.mean()), 4),
-            "median":      round(float(vals.median()), 4),
-            "std":         round(float(vals.std()), 4),
-            "min":         round(float(vals.min()), 4),
-            "max":         round(float(vals.max()), 4),
-            "p25":         round(float(vals.quantile(0.25)), 4),
-            "p75":         round(float(vals.quantile(0.75)), 4),
-            "skew":        round(float(vals.skew()), 3),
-            "missing_pct": round(df[col].isna().mean() * 100, 2),
+            "col":           col,
+            "semantic_type": sem_type,
+            "reason":        col_info.get("reason", ""),
+            "missing_pct":   round(df[col].isna().mean() * 100, 2),
         }
 
-        # per-class breakdown if target is known and binary/categorical
-        if target and target in df.columns:
-            for cls_val in df[target].dropna().unique()[:5]:  # cap at 5 classes
+        if "mean" in to_compute:
+            entry["mean"]   = round(float(vals.mean()), 4)
+            entry["median"] = round(float(vals.median()), 4)
+        if "std" in to_compute:
+            entry["std"]    = round(float(vals.std()), 4)
+        if "skew" in to_compute:
+            entry["skew"]   = round(float(vals.skew()), 3)
+        if "quantiles" in to_compute:
+            entry["min"]    = round(float(vals.min()), 4)
+            entry["max"]    = round(float(vals.max()), 4)
+            entry["p25"]    = round(float(vals.quantile(0.25)), 4)
+            entry["p75"]    = round(float(vals.quantile(0.75)), 4)
+        if "positive_rate" in to_compute:
+            entry["positive_rate"] = round(float(vals.mean()) * 100, 2)
+        if "value_counts" in to_compute:
+            entry["value_counts"] = vals.value_counts().head(10).to_dict()
+
+        # ── per-class breakdowns if target is known ───────────────────────
+        if target and target in df.columns and "mean" in to_compute:
+            for cls_val in df[target].dropna().unique()[:5]:
                 g = df[df[target] == cls_val][col].dropna()
                 if len(g):
                     entry[f"mean__{cls_val}"] = round(float(g.mean()), 4)
@@ -169,11 +361,9 @@ def _compute_summary(df: pd.DataFrame, target: Optional[str]) -> dict:
                 g2 = df[df[target] == classes[1]][col].dropna()
                 if len(g1) and len(g2):
                     try:
-                        _, pval = scipy_stats.mannwhitneyu(
-                            g1, g2, alternative="two-sided"
-                        )
+                        _, pval = scipy_stats.mannwhitneyu(g1, g2, alternative="two-sided")
                         entry["mw_pval"] = round(float(pval), 6)
-                        entry["lift"] = (
+                        entry["lift"]    = (
                             round(float(g1.mean() / g2.mean()), 3)
                             if g2.mean() != 0 else None
                         )
@@ -182,14 +372,29 @@ def _compute_summary(df: pd.DataFrame, target: Optional[str]) -> dict:
 
         num_stats.append(entry)
 
-    # ── categorical stats ────────────────────────────────────────────────────
+    # ── categorical stats ─────────────────────────────────────────────────
+    # now also includes numeric columns classified as categorical/ordinal/circular
     cat_stats = []
-    for col in cat_cols[:10]:
-        freq = df[col].value_counts().head(10).to_dict()
-        entry = {"col": col, "n_unique": int(df[col].nunique()), "top_values": freq}
+    extra_cat_cols = [
+        c for c in num_cols
+        if classifications.get(c, {}).get("semantic_type")
+        in ("categorical", "ordinal", "circular", "binary_flag")
+        and "value_counts" in classifications.get(c, {}).get("compute_stats", [])
+    ]
+    for col in list(cat_cols) + extra_cat_cols:
+        if col in [s["col"] for s in num_stats]:
+            continue  # already handled above
+        freq  = df[col].value_counts().head(10).to_dict()
+        entry = {
+            "col":           col,
+            "semantic_type": classifications.get(col, {}).get("semantic_type", "categorical"),
+            "reason":        classifications.get(col, {}).get("reason", ""),
+            "n_unique":      int(df[col].nunique()),
+            "top_values":    freq,
+            "missing_pct":   round(df[col].isna().mean() * 100, 2),
+        }
         if target and target in df.columns:
-            # value counts per target class for top categories
-            top_cats = list(freq.keys())[:6]
+            top_cats  = list(freq.keys())[:6]
             per_class = {}
             for cls_val in df[target].dropna().unique()[:5]:
                 sub = df[df[target] == cls_val][col]
@@ -199,7 +404,7 @@ def _compute_summary(df: pd.DataFrame, target: Optional[str]) -> dict:
             entry["per_class"] = per_class
         cat_stats.append(entry)
 
-    # ── target stats (if available) ──────────────────────────────────────────
+    # ── target stats ──────────────────────────────────────────────────────
     target_stats = None
     if target and target in df.columns:
         t = df[target].dropna()
@@ -215,15 +420,25 @@ def _compute_summary(df: pd.DataFrame, target: Optional[str]) -> dict:
         else:
             vc = t.value_counts()
             target_stats = {
-                "type":        "categorical",
-                "n_classes":   int(t.nunique()),
+                "type":         "categorical",
+                "n_classes":    int(t.nunique()),
                 "class_counts": vc.to_dict(),
                 "class_pcts":   (vc / len(t) * 100).round(2).to_dict(),
             }
 
-    # ── sample rows (helps Gemini understand the data) ───────────────────────
-    sample = df.head(5).to_dict(orient="records")
-    # sanitize for JSON
+    # ── sample rows ───────────────────────────────────────────────────────
+    if target and target in df.columns:
+        n_classes = df[target].nunique()
+        sample = (
+            df.groupby(target, group_keys=False)
+              .apply(lambda x: x.sample(min(5, len(x)), random_state=42))
+              .head(n_classes * 5)
+              .to_dict(orient="records")
+        )
+    else:
+        n_classes = 1
+        sample = df.sample(min(20, len(df)), random_state=42).to_dict(orient="records")
+
     for row in sample:
         for k, v in row.items():
             if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
@@ -235,15 +450,16 @@ def _compute_summary(df: pd.DataFrame, target: Optional[str]) -> dict:
     }
 
     return {
-        "shape":        {"rows": len(df), "cols": len(df.columns)},
-        "columns":      list(df.columns),
-        "dtypes":       {c: str(df[c].dtype) for c in df.columns},
-        "target":       target,
-        "num_stats":    num_stats,
-        "cat_stats":    cat_stats,
-        "target_stats": target_stats,
-        "missing":      missing,
-        "sample_rows":  sample,
+        "shape":           {"rows": len(df), "cols": len(df.columns)},
+        "columns":         list(df.columns),
+        "dtypes":          {c: str(df[c].dtype) for c in df.columns},
+        "classifications": classifications,
+        "target":          target,
+        "num_stats":       num_stats,
+        "cat_stats":       cat_stats,
+        "target_stats":    target_stats,
+        "missing":         missing,
+        "sample_rows":     sample,
     }
 
 
@@ -317,24 +533,28 @@ def _run_planning(
     )
     # Trim summary for planning — only needs structure, not full per-class stats
     # This prevents truncation on wide datasets with many numeric columns
+    n_classes = len((summary.get("target_stats") or {}).get("class_counts", {}) or {}) or 1
+    planning_sample_size = max(10, n_classes * 5)
+
     planning_summary = {
-        "shape":        summary["shape"],
-        "columns":      summary["columns"],
-        "dtypes":       summary["dtypes"],
-        "target":       summary["target"],
-        "target_stats": summary["target_stats"],
-        "missing":      summary["missing"],
-        "sample_rows":  summary["sample_rows"][:3],
-        # Slim numeric stats — just col name, mean, std, missing for planning
+        "shape":           summary["shape"],
+        "columns":         summary["columns"],
+        "dtypes":          summary["dtypes"],
+        "classifications": summary["classifications"],   # ← add this
+        "target":          summary["target"],
+        "target_stats":    summary["target_stats"],
+        "missing":         summary["missing"],
+        "sample_rows":     summary["sample_rows"][:planning_sample_size],
         "num_stats": [
             {k: v for k, v in s.items()
-             if k in ("col", "mean", "std", "min", "max", "missing_pct", "skew", "lift", "mw_pval")}
+            if k in ("col", "semantic_type", "mean", "std", "missing_pct",
+                    "skew", "lift", "mw_pval", "positive_rate")}
             for s in summary["num_stats"]
         ],
-        # Slim cat stats — just col name and top 5 values
         "cat_stats": [
-            {"col": s["col"], "n_unique": s["n_unique"],
-             "top_values": dict(list(s["top_values"].items())[:5])}
+            {"col": s["col"], "semantic_type": s["semantic_type"],
+            "n_unique": s["n_unique"],
+            "top_values": dict(list(s["top_values"].items())[:5])}
             for s in summary["cat_stats"]
         ],
     }
@@ -438,6 +658,12 @@ Rules:
 - Generate ONLY the sections listed above — do not add extra sections not in the plan.
 - Every code cell must be self-contained and runnable.
 - Use PRIMARY_COLOR / SECONDARY_COLOR / ACCENT_COLOR for all charts.
+  CRITICAL: these are hex strings not palette names. Rules:
+  * Single-colour plots (countplot, barplot, histplot, boxplot, violinplot):
+      use color=PRIMARY_COLOR   — never palette=PRIMARY_COLOR
+  * Multi-category plots: use palette=[PRIMARY_COLOR, SECONDARY_COLOR, ACCENT_COLOR]
+  * Heatmaps: use cmap="Blues" or cmap="YlOrRd"
+  * Scatterplots: use color=PRIMARY_COLOR
 - Reference specific numbers from the stats in every markdown narrative cell.
 - For the target column use: target_col variable (already defined, may be None — check before use).
 - For domain_specific sections, write creative, domain-appropriate analysis
@@ -476,6 +702,10 @@ ADD_CODE = FunctionDeclaration(
         "Add a Python code cell to the notebook. "
         "Pre-available variables: df, target_col (may be None), "
         "PRIMARY_COLOR, SECONDARY_COLOR, ACCENT_COLOR, pd, np, plt, sns, stats. "
+        "These are hex strings not palette names: single-colour plots use color=PRIMARY_COLOR "
+        "(never palette=PRIMARY_COLOR); multi-category plots use "
+        "palette=[PRIMARY_COLOR, SECONDARY_COLOR, ACCENT_COLOR]; "
+        "heatmaps use cmap='Blues' or cmap='YlOrRd'. "
         "End every chart cell with plt.tight_layout() and plt.show(). "
         "CRITICAL f-string rule: always use double-quoted f-strings. "
         "Never embed .replace() or .title() calls inside f-string quotes. "
@@ -585,7 +815,7 @@ class EDAAgent:
             print(f"▶ Dataset: {len(df):,} rows × {len(df.columns)} columns")
             print("▶ Computing statistics...")
 
-        summary = _compute_summary(df, target_col)
+        summary = _compute_summary(df, target_col, model_name=self.model_name, verbose=verbose,)
 
         # ── Phase 1: planning ────────────────────────────────────────────────
         plan = _run_planning(
@@ -597,6 +827,7 @@ class EDAAgent:
             user_context=context,
             verbose=verbose,
         )
+               
 
         # Resolve final target from plan if not explicitly provided
         resolved_target = target_col or plan.get("target_col")
