@@ -664,6 +664,9 @@ Rules:
 - Use PRIMARY_COLOR / SECONDARY_COLOR / ACCENT_COLOR for `color=` single-color args.
 - For seaborn `palette=` use PRIMARY_PALETTE / SECONDARY_PALETTE / ACCENT_PALETTE (these are lists).
   NEVER pass a bare hex string like PRIMARY_COLOR to `palette=` — seaborn will raise a ValueError.
+- For matplotlib `cmap=` (e.g. scatter, imshow, heatmap) NEVER use PRIMARY_COLOR, ACCENT_COLOR, or
+  any palette variable — these are hex strings, not colormap names. Always use a named matplotlib
+  colormap string such as 'viridis', 'plasma', 'coolwarm', 'RdYlGn', 'tab10', etc.
 - Reference specific numbers from the stats in every markdown narrative cell.
 - For the target column use: target_col variable (already defined, may be None — check before use).
 - For domain_specific sections, write creative, domain-appropriate analysis
@@ -712,6 +715,9 @@ ADD_CODE = FunctionDeclaration(
         "pd, np, plt, sns, stats. "
         "CRITICAL palette rule: seaborn palette= requires a list or named palette string. "
         "Always use PRIMARY_PALETTE (not PRIMARY_COLOR) for palette=. "
+        "CRITICAL cmap rule: matplotlib cmap= requires a named colormap string (e.g. 'viridis', "
+        "'plasma', 'coolwarm', 'tab10'). NEVER pass PRIMARY_COLOR, ACCENT_COLOR, or any palette "
+        "variable to cmap= — they are hex strings and will raise ValueError. "
         "End every chart cell with plt.tight_layout() and plt.show(). "
         "CRITICAL f-string rule: always use double-quoted f-strings. "
         "Never embed .replace() or .title() calls inside f-string quotes. "
