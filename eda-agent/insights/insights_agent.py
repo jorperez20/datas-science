@@ -780,32 +780,41 @@ class EDAAgent:
 
     def run(
         self,
-        df:         pd.DataFrame,
-        target_col: Optional[str] = None,
-        goal:       Optional[str] = None,
-        context:    Optional[str] = None,
-        output:     str = "eda_report.ipynb",
-        pptx:       bool = True,
-        verbose:    bool = True,
+        df:          pd.DataFrame,
+        target_col:  Optional[str] = None,
+        goal:        Optional[str] = None,
+        context:     Optional[str] = None,
+        source_path: Optional[str] = None,
+        source_type: str = "csv",
+        output:      str = "eda_report.ipynb",
+        pptx:        bool = True,
+        verbose:     bool = True,
     ) -> dict:
         """
         Run the two-phase EDA agent and write a .ipynb notebook.
 
         Parameters
         ----------
-        df         : Any tabular DataFrame
-        target_col : Optional explicit target column name.
-                     If omitted, Gemini infers the best one (or none).
-        goal       : Optional plain-text analysis goal.
-                     e.g. "analyse serve efficiency and win rates by surface"
-        context    : Optional plain-text dataset description.
-                     Explain what the dataset is, what the columns mean,
-                     any domain-specific knowledge, coded values, etc.
-                     e.g. "ATP tennis matches 2000-2023. The 'w_ace' column is
-                     winner ace count. Surface codes: H=Hard, C=Clay, G=Grass."
-        output     : Output path for the .ipynb file (base path, .pptx uses same stem)
-        pptx       : Also generate a PowerPoint presentation alongside the notebook
-        verbose    : Print progress
+        df          : Any tabular DataFrame (used for statistics and planning)
+        target_col  : Optional explicit target column name.
+                      If omitted, Gemini infers the best one (or none).
+        goal        : Optional plain-text analysis goal.
+                      e.g. "analyse serve efficiency and win rates by surface"
+        context     : Optional plain-text dataset description.
+                      Explain what the dataset is, what the columns mean,
+                      any domain-specific knowledge, coded values, etc.
+                      e.g. "ATP tennis matches 2000-2023. The 'w_ace' column is
+                      winner ace count. Surface codes: H=Hard, C=Clay, G=Grass."
+        source_path : Optional path to the source data file. When provided the
+                      notebook loads data directly from this file at runtime so
+                      all rows are available. When omitted the full DataFrame is
+                      embedded as a CSV string inside the notebook.
+        source_type : Format of the source file. One of: "csv", "parquet",
+                      "excel". Only used when source_path is provided.
+                      Defaults to "csv".
+        output      : Output path for the .ipynb file (base path, .pptx uses same stem)
+        pptx        : Also generate a PowerPoint presentation alongside the notebook
+        verbose     : Print progress
 
         Returns
         -------
@@ -835,23 +844,38 @@ class EDAAgent:
 
         nb = NotebookBuilder(title=title)
 
-        # Data loading cell — self-contained CSV embed
-        # Truncate by rows (not characters) to avoid cutting mid-row and
-        # introducing artificial NaNs in the target or any other column.
-        _csv_full = df.to_csv(index=False)
-        if len(_csv_full) > 200_000:
-            _avg_chars = len(_csv_full) / len(df)
-            _max_rows  = int(200_000 / _avg_chars)
-            _csv_embed = df.head(_max_rows).to_csv(index=False)
+        # Data loading cell — file path or full CSV embed
+        if source_path:
+            # Preferred path: read directly from source file so the notebook
+            # always has access to the full dataset with no size limits.
+            _supported = ("csv", "parquet", "excel")
+            if source_type not in _supported:
+                raise ValueError(
+                    f"source_type must be one of {_supported}, got {source_type!r}"
+                )
+            _read_calls = {
+                "csv":     f"pd.read_csv({repr(source_path)})",
+                "parquet": f"pd.read_parquet({repr(source_path)})",
+                "excel":   f"pd.read_excel({repr(source_path)})",
+            }
+            _load_line = f"df = {_read_calls[source_type]}"
             if verbose:
-                print(f"  → CSV truncated to {_max_rows:,} rows (row-safe) for notebook embed")
+                print(f"  → Notebook will load data from: {source_path} ({source_type})")
         else:
-            _csv_embed = _csv_full
+            # Fallback: embed the full DataFrame as a CSV string.
+            # No row/character limit — the entire dataset is included.
+            _csv_embed = df.to_csv(index=False)
+            _load_line = f"df = pd.read_csv(io.StringIO(_csv))"
+            if verbose:
+                print(f"  → Embedding full CSV ({len(_csv_embed):,} chars) in notebook")
 
-        nb.add_code(f"""\
-            import io
-            _csv = {repr(_csv_embed)}
-            df = pd.read_csv(io.StringIO(_csv))
+        nb.add_code(
+            (
+                f"import io\n"
+                f"_csv = {repr(_csv_embed)}\n"
+                if not source_path else ""
+            ) + f"""\
+            {_load_line}
             target_col = {repr(resolved_target)}
             print(f"Loaded {{len(df):,}} rows × {{len(df.columns)}} columns")
             if target_col and target_col in df.columns:
