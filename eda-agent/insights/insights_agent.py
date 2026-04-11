@@ -883,6 +883,19 @@ class EDAAgent:
                 print(df[target_col].value_counts().to_string())
         """)
 
+        # Stats cell — expose pre-computed summary variables so generated code
+        # can reference num_stats, cat_stats, classifications, target_stats
+        # directly without recomputing them from df at runtime.
+        nb.add_code(f"""\
+            import json as _json
+            _summary = _json.loads({repr(json.dumps(summary))})
+            num_stats       = _summary['num_stats']
+            cat_stats       = _summary['cat_stats']
+            classifications = _summary['classifications']
+            target_stats    = _summary['target_stats']
+            print("✓ Stats loaded")
+        """)
+
         # ── Phase 2: notebook generation ─────────────────────────────────────
         if verbose:
             print("  → Phase 2: generating notebook cells...")
