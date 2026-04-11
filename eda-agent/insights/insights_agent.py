@@ -836,9 +836,21 @@ class EDAAgent:
         nb = NotebookBuilder(title=title)
 
         # Data loading cell — self-contained CSV embed
+        # Truncate by rows (not characters) to avoid cutting mid-row and
+        # introducing artificial NaNs in the target or any other column.
+        _csv_full = df.to_csv(index=False)
+        if len(_csv_full) > 200_000:
+            _avg_chars = len(_csv_full) / len(df)
+            _max_rows  = int(200_000 / _avg_chars)
+            _csv_embed = df.head(_max_rows).to_csv(index=False)
+            if verbose:
+                print(f"  → CSV truncated to {_max_rows:,} rows (row-safe) for notebook embed")
+        else:
+            _csv_embed = _csv_full
+
         nb.add_code(f"""\
             import io
-            _csv = {repr(df.to_csv(index=False)[:200_000])}
+            _csv = {repr(_csv_embed)}
             df = pd.read_csv(io.StringIO(_csv))
             target_col = {repr(resolved_target)}
             print(f"Loaded {{len(df):,}} rows × {{len(df.columns)}} columns")
