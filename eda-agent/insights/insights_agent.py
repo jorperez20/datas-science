@@ -145,7 +145,7 @@ def _classify_columns_with_ai(
 
     classification_model = GenerativeModel(
         model_name=model_name,
-        generation_config=GenerationConfig(temperature=0.0, max_output_tokens=4096),
+        generation_config=GenerationConfig(temperature=0.0, max_output_tokens=10000),
     )
 
     BATCH_SIZE = 8
@@ -577,7 +577,7 @@ def _run_planning(
 
     planning_model = GenerativeModel(
         model_name=model_name,  # same model as generation
-        generation_config=GenerationConfig(temperature=0.1, max_output_tokens=32768),
+        generation_config=GenerationConfig(temperature=0.1, max_output_tokens=65000),
     )
     resp = planning_model.generate_content(prompt)
     raw  = resp.text.strip()
@@ -674,6 +674,12 @@ Rules:
     label = col.replace("_", " ").title()
     axes[i].set_title(f"Distribution of {{label}}")  # correct
   Never embed string method calls inside single-quoted f-strings.
+- NEVER import scikitplot — it is abandoned and broken on modern scipy.
+  Use matplotlib/seaborn equivalents instead:
+    ROC curve      → sklearn.metrics.roc_curve + plt.plot
+    Confusion matrix → sklearn.metrics.ConfusionMatrixDisplay.from_predictions
+    Precision-Recall → sklearn.metrics.precision_recall_curve + plt.plot
+    Learning curve → sklearn.model_selection.learning_curve + plt.plot
 """
 
 
@@ -757,7 +763,7 @@ class EDAAgent:
         self,
         project:    Optional[str] = None,
         location:   str = "us-central1",
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "gemini-2.5-pro",
     ):
         """
         Parameters
@@ -775,7 +781,7 @@ class EDAAgent:
         self._gen_model = GenerativeModel(
             model_name=self.model_name,
             tools=[EDA_TOOLS],
-            generation_config=GenerationConfig(temperature=0.2, max_output_tokens=32768),
+            generation_config=GenerationConfig(temperature=0.2, max_output_tokens=65000),
         )
 
     def run(
